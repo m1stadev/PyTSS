@@ -17,7 +17,7 @@ class Device:
         sepnonce: str = None,
     ):
         await self._fetch_device_info(identifier)
-        self.ecid = self.verify_ecid(ecid)
+        self.ecid = self._verify_ecid(ecid)
 
         if getattr(self, 'board', None) is None and board is not None:
             self.board = self._verify_board(board)
