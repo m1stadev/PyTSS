@@ -11,7 +11,7 @@ class Device:
         self,
         identifier: str,
         ecid: str,
-        boardconfig: str = None,
+        board: str = None,
         generator: str = None,
         apnonce: str = None,
         sepnonce: str = None,
@@ -19,8 +19,8 @@ class Device:
         await self._fetch_device_info(identifier)
         self.ecid = self.verify_ecid(ecid)
 
-        if getattr(self, 'board', None) is None and boardconfig is not None:
-            self.board = self._verify_board(boardconfig)
+        if getattr(self, 'board', None) is None and board is not None:
+            self.board = self._verify_board(board)
 
         self.generator = self._verify_generator(generator) if generator else None
 
@@ -79,29 +79,30 @@ class Device:
 
         ecid = hex(int(ecid, 16)).removeprefix('0x')
         if len(ecid) not in (
+            10,
             11,
             13,
             14,
-        ):  # All hex ECIDs without zero-padding are either 11, 13, or 14 characters long
+        ):  # All hex ECIDs without zero-padding are either 10, 11, 13, or 14 characters long
             raise DeviceError('Invalid ECID provided.')
 
         return ecid
 
-    async def _verify_board(self, boardconfig: str) -> str:
-        for board in [
-            board
-            for board in self._data['boards']
+    async def _verify_board(self, board: str) -> str:
+        for b in [
+            b
+            for b in self._data['boards']
             if board['boardconfig']
             .lower()
             .endswith('ap')  # Exclude development boards that may show up
         ]:
-            if board['boardconfig'].casefold() == boardconfig.casefold():
-                boardconfig = board['boardconfig']
+            if b['boardconfig'].casefold() == board.casefold():
+                board = b['boardconfig']
                 break
         else:
             raise DeviceError('Invalid board config provided.')
 
-        return boardconfig
+        return board
 
     def _verify_generator(self, generator: str) -> str:
         if generator is None:
