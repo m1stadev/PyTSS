@@ -1,25 +1,23 @@
-import plistlib
-
+from collections import UserDict
 from pytss.errors import DeviceError
 
+import plistlib
 
-class BuildIdentity:
-    def __init__(self, identity: dict) -> None:
-        self._identity = identity
 
+class BuildIdentity(UserDict):
     @property
     def board(self) -> str:
-        return self._identity['Info']['DeviceClass']
+        return self['Info']['DeviceClass']
 
     @property
     def restore_behavior(self) -> str:
-        return self._identity['Info']['RestoreBehavior']
+        return self['Info']['RestoreBehavior']
 
     def get_component(self, component: str) -> str:
-        if component not in self._identity['Manifest'].keys():
+        if component not in self['Manifest'].keys():
             raise DeviceError(f'Component {component} not found')
 
-        return self._identity['Manifest'][component]
+        return self['Manifest'][component]
 
 
 class BuildManifest:
