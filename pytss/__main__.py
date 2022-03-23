@@ -40,6 +40,26 @@ async def _main() -> None:
 
     args = parser.parse_args()
 
+    print(f'pytss {pytss.__version__}')
+
+    print('Verifying provided information...')
+    device = await pytss.Device().init(args.device, args.ecid)
+
+    if args.version or args.buildid:
+        print('Fetching firmware information...')
+        firmware = await pytss.FirmwareAPI().fetch_firmware(
+            device, args.buildid, args.version
+        )
+        manifest = await firmware.read('BuildManifest.plist')
+    else:
+        print('Using manually specified build manifest...')
+        manifest = await args.manifest.read()
+
+    manifest = pytss.BuildManifest(manifest)
+
+    print('Getting correct BuildIdentity')
+    identity = manifest.get_identity(device.board, args.erase)
+
 
 def main() -> None:
     asyncio.run(_main())
