@@ -1,4 +1,4 @@
-from .errors import APIError, PyTSSError
+from .errors import APIError, TSSError
 from .device import Device
 from .firmware import Firmware
 
@@ -48,7 +48,7 @@ class FirmwareAPI:
         firmwares = await self.fetch_all_firmwares(device)
 
         if buildid is None and version is None:
-            raise PyTSSError('Must provide either buildid or version.')
+            raise TSSError('Must provide either buildid or version.')
 
         if buildid is not None:
             try:
@@ -71,4 +71,4 @@ class FirmwareAPI:
             except StopIteration:
                 pass
 
-        raise PyTSSError('Unable to find firmware.')
+        raise TSSError('Unable to find firmware.')
