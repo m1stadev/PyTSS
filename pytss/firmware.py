@@ -1,7 +1,7 @@
-from datetime import datetime
-from remotezip import RemoteZip
-
 import asyncio
+from datetime import datetime
+
+from remotezip import RemoteZip
 
 
 class Firmware:

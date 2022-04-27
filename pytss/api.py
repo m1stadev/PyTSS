@@ -1,8 +1,8 @@
-from .errors import APIError, TSSError
-from .device import Device
-from .firmware import Firmware
-
 import aiohttp
+
+from .device import Device
+from .errors import APIError, TSSError
+from .firmware import Firmware
 
 RELEASE_API = 'https://api.ipsw.me/v4/device'
 BETA_API = 'https://api.m1sta.xyz/betas'

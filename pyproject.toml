@@ -12,18 +12,18 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.7",
     "Topic :: Utilities"
 ]
 packages = [
     { include = "pytss" }
 ]
 
-#[tool.poetry.scripts]
-#pytss = "pytss.__main__:main"
+[tool.poetry.scripts]
+pytss = "pytss.__main__:main"
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.7"
 aiohttp = "^3.8.1"
 aiopath = "0.5.12"
 remotezip = "^0.9.3"
@@ -31,6 +31,13 @@ ujson = "^5.1.0"
 
 [tool.poetry.dev-dependencies]
 black = "^22.1.0"
+
+[tool.black]
+skip-string-normalization = true
+
+[tool.isort]
+profile = "black"
+src_paths = ["pytest"]
 
 [tool.poetry.urls]
 "Bug Tracker" = "https://github.com/m1stadev/PyTSS/issues"
