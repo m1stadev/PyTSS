@@ -1,74 +1,54 @@
 import aiohttp
 
 from .device import Device
-from .errors import APIError, TSSError
-from .firmware import Firmware
-
-RELEASE_API = 'https://api.ipsw.me/v4/device'
-BETA_API = 'https://api.m1sta.xyz/betas'
+from .errors import APIError
 
 
-class FirmwareAPI:
-    async def fetch_all_firmwares(self, device: Device) -> Firmware:
-        async with aiohttp.ClientSession() as session:
-            firmwares = list()
-            for api_url in (RELEASE_API, BETA_API):
-                async with session.get(f'{api_url}/{device.identifier}') as resp:
-                    if resp.status != 200:
-                        raise APIError(
-                            f'Failed to request firmwares for device: {device.identifier}.',
-                            resp.status,
-                        )
+async def fetch_device(identifier: str, boardconfig: str = None) -> Device:
+    async with aiohttp.ClientSession() as session, session.get(
+        'https://api.ipsw.me/v4/devices'
+    ) as resp:
+        if resp.status != 200:
+            raise APIError(
+                'Failed to request device information from IPSW.me.', resp.status
+            )
 
-                    data = await resp.json()
+        data = await resp.json()
 
-                if api_url == RELEASE_API:
-                    firms = data['firmwares']
-                elif api_url == BETA_API:
-                    firms = data
+    device = next(
+        (d for d in data if d['identifier'].casefold() == identifier.casefold()), None
+    )
+    if device is None:
+        raise ValueError(f"Invalid device identifier provided: '{identifier}'")
 
-                for firm in firms:
-                    if any(
-                        firm['buildid'].casefold() == f.buildid.casefold()
-                        for f in firmwares
-                    ):
-                        continue
+    valid_boards = [
+        board
+        for board in device['boards']
+        if board['boardconfig']
+        .lower()
+        .endswith('ap')  # Exclude development boards that may pop up
+    ]
 
-                    firmwares.append(Firmware(firm))
+    if len(valid_boards) == 1:
+        board = valid_boards[0]
+    else:
+        if boardconfig is None:
+            raise ValueError(
+                'Board config is required with devices that have multiple boards.'
+            )
 
-        return sorted(
-            firmwares,
-            key=lambda x: x.buildid,
-            reverse=True,
+        board = next(
+            (
+                b
+                for b in valid_boards
+                if b['boardconfig'].casefold() == boardconfig.casefold()
+            ),
+            None,
         )
 
-    async def fetch_firmware(
-        self, device: Device, buildid: str = None, version: str = None
-    ) -> Firmware:
-        firmwares = await self.fetch_all_firmwares(device)
+        if board is None:
+            raise ValueError(f"Invalid board config provided: '{boardconfig}'")
 
-        if buildid is None and version is None:
-            raise TSSError('Must provide either buildid or version.')
-
-        if buildid is not None:
-            try:
-                return next(
-                    firm
-                    for firm in firmwares
-                    if firm.buildid.casefold() == buildid.casefold()
-                )
-            except StopIteration:
-                pass
-
-        if version is not None:
-            try:
-                return next(
-                    firm
-                    for firm in firmwares
-                    if firm.version.casefold().replace(' ', '')
-                    == version.casefold().replace(' ', '')
-                )
-            except StopIteration:
-                pass
-
-        raise TSSError('Unable to find firmware.')
+    return Device(
+        identifier=device['identifier'], chip_id=board['cpid'], board_id=board['bdid']
+    )

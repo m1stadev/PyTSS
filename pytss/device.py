@@ -1,36 +1,35 @@
-from hashlib import sha1, sha384
-from typing import Optional
-from .errors import APIError, DeviceError
+from random import getrandbits
+from typing import Optional, Union
 
 import aiohttp
-import asyncio
+
+from .errors import APIError
+from .firmware import Firmware
+
+RELEASE_API = 'https://api.ipsw.me/v4/device'
+BETA_API = 'https://api.m1sta.xyz/betas'
+
+
+def _generate_bytes(length: int) -> bytes:
+    return bytes(getrandbits(8) for _ in range(length))
 
 
 class Device:
-    async def init(
+    def __init__(
         self,
         identifier: str,
-        ecid: str,
-        board: str = None,
-        boot_nonce: str = None,
-        apnonce: str = None,
-        sepnonce: str = None,
+        chip_id: int,
+        board_id: int,
+        *,
+        ecid: Optional[Union[int, str]] = None,
     ):
+        self.identifier = identifier
+        self.chip_id = chip_id
+        self.board_id = board_id
+
         self.ecid = ecid
-
-        if getattr(self, 'board', None) is None and board is not None:
-            self.board = self._verify_board(board)
-
-        self.boot_nonce = boot_nonce
-
-        self.apnonce = apnonce
-
-        self.sepnonce = sepnonce
-
-        if (boot_nonce and apnonce) and (not 0x8020 <= self.cpid < 0x8900):
-            await self._verify_apnonce_pair()
-
-        return self
+        self.apnonce = None
+        self.sepnonce = None
 
     @property
     def apnonce(self) -> bytes:
@@ -38,19 +37,19 @@ class Device:
 
     @apnonce.setter
     def apnonce(self, apnonce: Optional[Union[bytes, str]]) -> None:
-        apnonce_len = 32 if 0x8010 <= self.cpid < 0x8900 else 20
+        apnonce_len = 32 if 0x8010 <= self.chip_id < 0x8900 else 20
 
         if apnonce is not None:
             if isinstance(apnonce, str):  # Assume hexadecimal
                 try:
                     apnonce = bytes.fromhex(apnonce)
                 except TypeError:
-                    raise DeviceError('Invalid ApNonce provided.')
+                    raise ValueError('Invalid ApNonce provided')
 
             if len(apnonce) != apnonce_len:
-                raise DeviceError('Invalid ApNonce provided.')
+                raise ValueError('Invalid ApNonce provided')
         else:
-            pass  # generate apnonce here
+            apnonce = _generate_bytes(apnonce_len)
 
         self._apnonce = apnonce
 
@@ -59,32 +58,14 @@ class Device:
         return self._ecid
 
     @ecid.setter
-    def ecid(self, ecid: Union[int, str]) -> None:
+    def ecid(self, ecid: Optional[Union[int, str]]) -> None:
         if isinstance(ecid, str):  # Assume hexadecimal
             try:
                 ecid = int(ecid, 16)
             except ValueError:
-                raise DeviceError('Invalid ECID provided.')
+                raise ValueError('Invalid ECID provided')
 
         self._ecid = ecid
-
-    @property
-    def boot_nonce(self) -> bytes:
-        return self._boot_nonce
-
-    @boot_nonce.setter
-    def boot_nonce(self, boot_nonce: Optional[Union[str, bytes]]) -> None:
-        if boot_nonce is not None:
-            if isinstance(boot_nonce, str):  # Assume hexadecimal
-                try:
-                    boot_nonce = bytes.fromhex(boot_nonce)
-                except TypeError:
-                    raise DeviceError('Invalid Boot Nonce provided.')
-
-        else:
-            pass  # make random bytes here
-
-        self._boot_nonce = boot_nonce
 
     @property
     def sepnonce(self) -> bytes:
@@ -97,77 +78,86 @@ class Device:
                 try:
                     sepnonce = bytes.fromhex(sepnonce)
                 except TypeError:
-                    raise DeviceError('Invalid SepNonce provided.')
+                    raise ValueError('Invalid SepNonce provided')
 
             if len(sepnonce) != 20:
-                raise DeviceError('Invalid SepNonce provided.')
+                raise ValueError('Invalid SepNonce provided')
         else:
-            pass  # generate sepnonce here
+            sepnonce = _generate_bytes(20)
 
         self._sepnonce = sepnonce
 
     @property
     def supports_img4(self) -> bool:
-        return not 0x8900 < self.cpid < 0x8955
+        return not 0x8900 < self.chip_id < 0x8955
 
-    async def _fetch_device_info(self, identifier: str) -> None:
-        async with aiohttp.ClientSession() as session, session.get(
-            f'https://api.ipsw.me/v4/devices'
-        ) as resp:
-            if resp.status != 200:
-                raise APIError(
-                    'Failed to request device information from IPSW.me.', resp.status
+    async def fetch_firmware(
+        self, *, version: str = None, buildid: str = None
+    ) -> Firmware:
+        if version is None and buildid is None:
+            raise ValueError('Either a version or buildid must be provided')
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{RELEASE_API}/{self.identifier}') as resp:
+                if resp.status != 200:
+                    raise APIError(
+                        f"Failed to request firmwares for device identfier: '{self.identifier}'",
+                        resp.status,
+                    )
+
+                data = await resp.json()
+
+            if buildid:
+                firm = next(
+                    (
+                        f
+                        for f in data['firmwares']
+                        if f['buildid'].casefold() == buildid.casefold()
+                    ),
+                    None,
                 )
 
-            data = await resp.json()
+            elif version:
+                firm = next(
+                    (
+                        f
+                        for f in data['firmwares']
+                        if f['version'].casefold() == version.casefold()
+                    ),
+                    None,
+                )
 
-        for device in data:
-            if device['identifier'].casefold() == identifier.casefold():
-                self._data = device
-                break
-        else:
-            raise DeviceError('Invalid device identifier provided.')
+            if firm is None:
+                async with session.get(f'{BETA_API}/{self.identifier}') as resp:
+                    if resp.status != 200:
+                        raise APIError(
+                            f"Failed to request firmwares for device identfier: '{self.identifier}'",
+                            resp.status,
+                        )
 
-        self.identifier = self._data['identifier']
+                    data = await resp.json()
 
-        valid_boards = [
-            board
-            for board in self._data['boards']
-            if board['boardconfig']
-            .lower()
-            .endswith('ap')  # Exclude development boards that may show up
-        ]
+                if buildid:
+                    firm = next(
+                        (
+                            f
+                            for f in data
+                            if f['buildid'].casefold() == buildid.casefold()
+                        ),
+                        None,
+                    )
 
-        if len(valid_boards) == 1:
-            self.board = valid_boards[0]['boardconfig']
-            self.cpid = valid_boards[0]['cpid']
-            self.bdid = valid_boards[0]['bdid']
+                elif version:
+                    firm = next(
+                        (
+                            f
+                            for f in data
+                            if f['version'].casefold() == version.casefold()
+                        ),
+                        None,
+                    )
 
-    async def _verify_board(self, board: str) -> str:
-        for b in [
-            b
-            for b in self._data['boards']
-            if board['boardconfig']
-            .lower()
-            .endswith('ap')  # Exclude development boards that may show up
-        ]:
-            if b['boardconfig'].casefold() == board.casefold():
-                board = b['boardconfig']
-                break
-        else:
-            raise DeviceError('Invalid board config provided.')
+        if firm is None:
+            raise ValueError('No firmware was found for the provided version/buildid')
 
-        return board
-
-    def __verify_apnonce_pair(self) -> bool:
-        boot_nonce = bytes.fromhex(self.boot_nonce.removeprefix('0x'))
-        if len(self.apnonce) == 64:
-            apnonce = sha384(boot_nonce).hexdigest()[:-32]
-        elif len(self.apnonce) == 40:
-            apnonce = sha1(boot_nonce).hexdigest()
-
-        if apnonce != self.apnonce:
-            raise DeviceError('Invalid Boot Nonce-ApNonce pair provided.')
-
-    async def _verify_apnonce_pair(self) -> Optional[bool]:
-        await asyncio.to_thread(self.__verify_apnonce_pair)
+        return Firmware(firm)

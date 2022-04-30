@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+
 import pytss
 
 
@@ -42,23 +43,26 @@ async def _main() -> None:
 
     print(f'pytss {pytss.__version__}')
 
-    print('Verifying provided information...')
-    device = await pytss.Device().init(args.device, args.ecid)
+    print('Fetching device information...')
+    device = await pytss.fetch_device(args.device)
+    device.ecid = args.ecid
 
-    if args.version or args.buildid:
-        print('Fetching firmware information...')
-        firmware = await pytss.FirmwareAPI().fetch_firmware(
-            device, args.buildid, args.version
-        )
-        manifest = await firmware.read('BuildManifest.plist')
-    else:
-        print('Using manually specified build manifest...')
-        manifest = await args.manifest.read()
+    print('Fetching firmware information...')
+    firmware = await device.fetch_firmware(version=args.version, buildid=args.buildid)
 
-    manifest = pytss.BuildManifest(manifest)
+    print('Creating TSS request...')
+    tss = await pytss.TSS.create_request(
+        device,
+        firmware,
+        restore_type=pytss.RestoreType.ERASE
+        if args.erase
+        else pytss.RestoreType.UPDATE,
+    )
 
-    print('Getting correct BuildIdentity')
-    identity = manifest.get_identity(device.board, args.erase)
+    print('Sending TSS request...')
+    response = await tss.send()
+
+    print(f'ApTicket length: {len(response.data)}')
 
 
 def main() -> None:
