@@ -34,11 +34,13 @@ class TSSResponse:
                     pass  # raise error
 
             elif r.split('=')[0] == 'REQUEST_STRING':
-                apticket = plistlib.loads(str.encode(r.split('=', 1)[1]))
-                if 'ApImg4Ticket' not in apticket.keys():
+                plist_response = plistlib.loads(str.encode(r.split('=', 1)[1]))
+                if 'APTicket' in plist_response.keys():
+                    self.data = plist_response['APTicket']
+                elif 'ApImg4Ticket' in plist_response.keys():
+                    self.data = plist_response['ApImg4Ticket']
+                else:
                     raise ValueError('ApTicket not found in TSS response')
-
-                self.data = apticket['ApImg4Ticket']
 
             elif r.split('=')[0] == 'MESSAGE':  # Not handling response message for now
                 pass
