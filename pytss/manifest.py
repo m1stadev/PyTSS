@@ -1,5 +1,6 @@
 import plistlib
 from enum import Enum
+from typing import Optional
 
 from .device import Device
 
@@ -12,6 +13,31 @@ class RestoreType(str, Enum):
 class BuildIdentity:
     def __init__(self, identity: dict) -> None:
         self._data = identity
+
+    @property
+    def baseband_data(self) -> dict:
+        if not self.supports_cellular:
+            raise TypeError('Device does not have cellular support.')
+
+        baseband_data = {}
+
+        if 'BbChipID' in self._data.keys():
+            baseband_data['BbChipID'] = int(self._data['BbChipID'], 16)
+        else:
+            raise KeyError('Baseband Chip ID not found in build identity')
+
+        for key in (
+            'BbProvisioningManifestKeyHash',
+            'BbActivationManifestKeyHash',
+            'BbCalibrationManifestKeyHash',
+            'BbFactoryActivationManifestKeyHash',
+            'BbFDRSecurityKeyHash',
+            'BbSkeyId',
+        ):
+            if key in self._data.keys():
+                baseband_data[key] = self._data[key]
+
+        return baseband_data
 
     @property
     def board_id(self) -> int:
@@ -30,8 +56,16 @@ class BuildIdentity:
         return int(chip_id, 16)
 
     @property
-    def pearlcertrootpub(self) -> bytes:
+    def pearlcertrootpub(self) -> Optional[bytes]:
         return self._data.get('PearlCertificationRootPub')
+
+    @property
+    def supports_cellular(self) -> bool:
+        manifest = self._data.get('Manifest')
+        if manifest is None:
+            raise KeyError('Manifest dict not found in build identity')
+
+        return 'BasebandFirmware' in manifest.keys()
 
     @property
     def restore_type(self) -> RestoreType:
@@ -68,11 +102,15 @@ class BuildIdentity:
 
         return unique_buildid
 
-    def get_component(self, component: str) -> str:
-        if component not in self._data['Manifest'].keys():
-            raise KeyError(f'Component {component} not found')
+    def get_component(self, component: str) -> dict:
+        manifest = self._data.get('Manifest')
+        if manifest is None:
+            raise KeyError('Manifest dict not found in build identity')
 
-        return self._data['Manifest'][component]
+        if component not in manifest.keys():
+            raise KeyError(f"Component not found: '{component}'")
+
+        return manifest.get(component)
 
 
 class BuildManifest:
