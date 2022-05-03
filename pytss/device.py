@@ -1,17 +1,13 @@
-from random import getrandbits
 from typing import Optional, Union
 
 import aiohttp
 
 from .errors import APIError
 from .firmware import Firmware
+from .utils import _generate_bytes
 
 RELEASE_API = 'https://api.ipsw.me/v4/device'
 BETA_API = 'https://api.m1sta.xyz/betas'
-
-
-def _generate_bytes(length: int) -> bytes:
-    return bytes(getrandbits(8) for _ in range(length))
 
 
 class Device:
