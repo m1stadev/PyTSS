@@ -24,30 +24,74 @@ class Device:
         self.board_id = board_id
 
         self.ecid = ecid
-        self.apnonce = None
-        self.sepnonce = None
+        self.ap_nonce = None
+
+        self.bb_serial = None
+        self.bb_nonce = None
+
+        self.sep_nonce = None
 
     @property
-    def apnonce(self) -> bytes:
-        return self._apnonce
+    def ap_nonce(self) -> bytes:
+        return self._ap_nonce
 
-    @apnonce.setter
-    def apnonce(self, apnonce: Optional[Union[bytes, str]]) -> None:
-        apnonce_len = 32 if 0x8010 <= self.chip_id < 0x8900 else 20
+    @ap_nonce.setter
+    def ap_nonce(self, ap_nonce: Optional[Union[bytes, str]]) -> None:
+        ap_nonce_len = 32 if 0x8010 <= self.chip_id < 0x8900 else 20
 
-        if apnonce is not None:
-            if isinstance(apnonce, str):  # Assume hexadecimal
+        if ap_nonce is not None:
+            if isinstance(ap_nonce, str):  # Assume hexadecimal
                 try:
-                    apnonce = bytes.fromhex(apnonce)
+                    ap_nonce = bytes.fromhex(ap_nonce)
                 except TypeError:
-                    raise ValueError('Invalid ApNonce provided')
+                    raise ValueError('Invalid ap_nonce provided')
 
-            if len(apnonce) != apnonce_len:
-                raise ValueError('Invalid ApNonce provided')
+            if len(ap_nonce) != ap_nonce_len:
+                raise ValueError('Invalid ap_nonce provided')
         else:
-            apnonce = _generate_bytes(apnonce_len)
+            ap_nonce = _generate_bytes(ap_nonce_len)
 
-        self._apnonce = apnonce
+        self._ap_nonce = ap_nonce
+
+    @property
+    def bb_nonce(self) -> bytes:
+        return self._bb_nonce
+
+    @bb_nonce.setter
+    def bb_nonce(self, bb_nonce: Optional[Union[bytes, str]]) -> None:
+        if bb_nonce is not None:
+            if isinstance(bb_nonce, str):
+                try:
+                    bb_nonce = bytes.fromhex(bb_nonce)
+                except TypeError:
+                    raise ValueError('Invalid Baseband Nonce provided')
+
+            if len(bb_nonce) != 20:
+                raise ValueError('Invalid Baseband Nonce provided')
+        else:
+            bb_nonce = _generate_bytes(20)
+
+        self._bb_nonce = bb_nonce
+
+    @property
+    def bb_serial(self) -> bytes:
+        return self._bb_serial
+
+    @bb_serial.setter
+    def bb_serial(self, bb_serial: Optional[Union[bytes, str]]) -> None:
+        if bb_serial is not None:
+            if isinstance(bb_serial, str):
+                try:
+                    bb_serial = bytes.fromhex(bb_serial)
+                except TypeError:
+                    raise ValueError('Invalid Baseband serial number provided')
+
+            if len(bb_serial) != 4:
+                raise ValueError('Invalid Baseband serial number provided')
+        else:
+            bb_serial = _generate_bytes(4)
+
+        self._bb_serial = bb_serial
 
     @property
     def ecid(self) -> int:
@@ -64,24 +108,24 @@ class Device:
         self._ecid = ecid
 
     @property
-    def sepnonce(self) -> bytes:
-        return self._sepnonce
+    def sep_nonce(self) -> bytes:
+        return self._sep_nonce
 
-    @sepnonce.setter
-    def sepnonce(self, sepnonce: Optional[Union[bytes, str]]) -> None:
-        if sepnonce is not None:
-            if isinstance(sepnonce, str):
+    @sep_nonce.setter
+    def sep_nonce(self, sep_nonce: Optional[Union[bytes, str]]) -> None:
+        if sep_nonce is not None:
+            if isinstance(sep_nonce, str):
                 try:
-                    sepnonce = bytes.fromhex(sepnonce)
+                    sep_nonce = bytes.fromhex(sep_nonce)
                 except TypeError:
-                    raise ValueError('Invalid SepNonce provided')
+                    raise ValueError('Invalid sep_nonce provided')
 
-            if len(sepnonce) != 20:
-                raise ValueError('Invalid SepNonce provided')
+            if len(sep_nonce) != 20:
+                raise ValueError('Invalid sep_nonce provided')
         else:
-            sepnonce = _generate_bytes(20)
+            sep_nonce = _generate_bytes(20)
 
-        self._sepnonce = sepnonce
+        self._sep_nonce = sep_nonce
 
     @property
     def supports_img4(self) -> bool:
