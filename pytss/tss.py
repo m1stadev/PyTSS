@@ -5,9 +5,12 @@ from uuid import UUID
 
 from aiohttp import ClientSession
 
+from .baseband_data import get_baseband_data
 from .device import Device
+from .errors import APIError
 from .firmware import Firmware, FirmwareImage
 from .manifest import BuildIdentity, BuildManifest, RestoreType
+from .utils import _generate_bytes
 
 TSS_API = 'http://gs.apple.com/TSS/controller'
 TSS_HEADERS = {
@@ -31,14 +34,14 @@ class TSSResponse:
             if r.split('=')[0] == 'STATUS':
                 status_code = int(r.split('=')[1])
                 if status_code != 0:
-                    pass  # raise error
+                    raise APIError(f'Failed to receive TSS response', status_code)
 
             elif r.split('=')[0] == 'REQUEST_STRING':
                 plist_response = plistlib.loads(str.encode(r.split('=', 1)[1]))
                 if 'APTicket' in plist_response.keys():
-                    self.data = plist_response['APTicket']
+                    self.apticket = plist_response['APTicket']
                 elif 'ApImg4Ticket' in plist_response.keys():
-                    self.data = plist_response['ApImg4Ticket']
+                    self.apticket = plist_response['ApImg4Ticket']
                 else:
                     raise ValueError('ApTicket not found in TSS response')
 
@@ -55,6 +58,7 @@ class TSS:
         self.identity = build_identity
 
         self._create_base_request()
+        self._images: list = []
 
     def _create_base_request(self) -> None:
         request = {
@@ -73,14 +77,14 @@ class TSS:
 
         request['UniqueBuildID'] = self.identity.unique_buildid
 
-        request['ApNonce'] = self.device.apnonce
+        request['ApNonce'] = self.device.ap_nonce
         request['ApProductionMode'] = True
 
         if self.device.supports_img4:
             request['@ApImg4Ticket'] = True
             request['ApSecurityMode'] = True
 
-            request['SepNonce'] = self.device.sepnonce
+            request['SepNonce'] = self.device.sep_nonce
 
             if self.identity.pearlcertrootpub is not None:
                 request['PearlCertificationRootPub'] = self.identity.pearlcertrootpub
@@ -91,6 +95,41 @@ class TSS:
 
         self._request = request
 
+    def _add_baseband_firmware(self) -> None:
+        request = {'@BBTicket': True, 'BbNonce': self.device.bb_nonce}
+        request.update(self.identity.baseband_data)
+
+        baseband_data = get_baseband_data(self.device)
+        request['BbGoldCertId'] = baseband_data.bbgcid
+
+        if self.device.bb_serial is not None:
+            if len(self.device.bb_serial) != baseband_data.bbslen:
+                raise ValueError(
+                    f"Baseband serial length was expected to be: {baseband_data.bbslen}, was: {len(self.device.bb_serial)}"
+                )
+
+            request['BbSNUM'] = self.device.bb_serial
+        else:
+            request['BbSNUM'] = _generate_bytes(baseband_data.bbslen)
+
+        baseband_firmware = self.identity.get_component('BasebandFirmware')
+        if 'Info' in baseband_firmware.keys():
+            del baseband_firmware['Info']
+
+        if request['BbChipID'] == 0x68:
+            if request['BbGoldCertId'] in (0x26F3FACC, 0x5CF2EC4E, 0x8399785A):
+                keys_to_remove = ('PSI2-PartialDigest', 'RestorePSI2-PartialDigest')
+            else:
+                keys_to_remove = ('PSI-PartialDigest', 'RestorePSI-PartialDigest')
+
+            for key in keys_to_remove:
+                baseband_firmware.pop(key, None)
+
+        request['BasebandFirmware'] = baseband_firmware
+
+        self._request.update(request)
+        self._images.append(FirmwareImage.Baseband)
+
     @classmethod
     async def create_request(
         self, device: Device, firmware: Firmware, *, restore_type: RestoreType
@@ -98,10 +137,10 @@ class TSS:
         if device.ecid is None:
             raise TypeError('No ECID is set')
 
-        if device.apnonce is None:
+        if device.ap_nonce is None:
             raise TypeError('No ApNonce is set')
 
-        if device.sepnonce is None:
+        if device.sep_nonce is None:
             raise TypeError('No SepNonce is set')
 
         manifest = BuildManifest(await firmware.read('BuildManifest.plist'))
@@ -110,8 +149,29 @@ class TSS:
         return TSS(device, identity)
 
     def add_image(self, image: FirmwareImage) -> None:
-        # TODO: iterate thru every FirmwareImage and write an internal function for adding each tag
-        pass
+        if image in self._images:
+            raise ValueError(f"Image already added to TSS request: '{image.name}'")
+
+        if image == FirmwareImage.Baseband:
+            if not self.identity.supports_cellular:
+                raise ValueError('Device does not have cellular support.')
+
+            self._add_baseband_firmware()
+
+        elif image == FirmwareImage.SecureElement:
+            pass
+        elif image == FirmwareImage.Savage:
+            pass
+        elif image == FirmwareImage.Yonkers:
+            pass
+        elif image == FirmwareImage.Vinyl:
+            pass
+        elif image == FirmwareImage.Rose:
+            pass
+        elif image == FirmwareImage.Veridian:
+            pass
+        else:
+            raise TypeError(f"Invalid firmware image provided: '{image}'")
 
     async def send(self) -> TSSResponse:
         async with ClientSession() as session, session.post(
