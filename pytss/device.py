@@ -74,7 +74,7 @@ class Device:
         self._bb_nonce = bb_nonce
 
     @property
-    def bb_serial(self) -> bytes:
+    def bb_serial(self) -> Optional[bytes]:
         return self._bb_serial
 
     @bb_serial.setter
@@ -88,10 +88,10 @@ class Device:
 
             if len(bb_serial) != 4:
                 raise ValueError('Invalid Baseband serial number provided')
-        else:
-            bb_serial = _generate_bytes(4)
 
-        self._bb_serial = bb_serial
+            self._bb_serial = bb_serial
+        else:
+            self._bb_serial = None
 
     @property
     def ecid(self) -> int:
