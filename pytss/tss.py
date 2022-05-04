@@ -37,11 +37,11 @@ class TSSResponse:
                     raise APIError(f'Failed to receive TSS response', status_code)
 
             elif r.split('=')[0] == 'REQUEST_STRING':
-                plist_response = plistlib.loads(str.encode(r.split('=', 1)[1]))
-                if 'APTicket' in plist_response.keys():
-                    self.apticket = plist_response['APTicket']
-                elif 'ApImg4Ticket' in plist_response.keys():
-                    self.apticket = plist_response['ApImg4Ticket']
+                self.data = plistlib.loads(str.encode(r.split('=', 1)[1]))
+                if 'APTicket' in self.data.keys():
+                    self.apticket = self.data['APTicket']
+                elif 'ApImg4Ticket' in self.data.keys():
+                    self.apticket = self.data['ApImg4Ticket']
                 else:
                     raise ValueError('ApTicket not found in TSS response')
 
