@@ -1,7 +1,10 @@
 import argparse
 import asyncio
+from random import getrandbits
 
 import pytss
+
+from .soc import BasebandSoC
 
 
 async def _main() -> None:
@@ -51,7 +54,7 @@ async def _main() -> None:
     firmware = await device.fetch_firmware(version=args.version, buildid=args.buildid)
 
     print('Creating TSS request...')
-    tss = await pytss.TSS.create_request(
+    tss = await pytss.TSS.new(
         device,
         firmware,
         restore_type=pytss.RestoreType.ERASE
@@ -59,10 +62,18 @@ async def _main() -> None:
         else pytss.RestoreType.UPDATE,
     )
 
+    baseband = BasebandSoC(
+        gold_cert_id=0x1D8FB8F9,  # iPhone14,3
+        nonce=bytes(getrandbits(8) for _ in range(20)),
+        serial=bytes(getrandbits(8) for _ in range(4)),
+    )
+
+    tss.add_image(pytss.FirmwareImage.Baseband, baseband)
+
     print('Sending TSS request...')
     response = await tss.send()
 
-    print(f'ApTicket length: {len(response.data)}')
+    print(response.data)
 
 
 def main() -> None:

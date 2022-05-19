@@ -1,6 +1,7 @@
 import plistlib
+from collections import UserDict
 from enum import Enum
-from typing import Optional
+from typing import Any, NoReturn
 
 from .device import Device
 
@@ -10,9 +11,14 @@ class RestoreType(str, Enum):
     UPDATE = 'Update'
 
 
-class BuildIdentity:
+class BuildIdentity(UserDict):
     def __init__(self, identity: dict) -> None:
-        self._data = identity
+        self.data = identity
+
+    def __setitem__(self, _: Any, __: Any) -> NoReturn:
+        raise TypeError('BuildIdentity is read-only')
+
+    __delitem__ = __setitem__
 
     @property
     def baseband_data(self) -> dict:
@@ -21,8 +27,8 @@ class BuildIdentity:
 
         baseband_data = {}
 
-        if 'BbChipID' in self._data.keys():
-            baseband_data['BbChipID'] = int(self._data['BbChipID'], 16)
+        if 'BbChipID' in self.data.keys():
+            baseband_data['BbChipID'] = int(self.data['BbChipID'], 16)
         else:
             raise KeyError('Baseband Chip ID not found in build identity')
 
@@ -34,14 +40,14 @@ class BuildIdentity:
             'BbFDRSecurityKeyHash',
             'BbSkeyId',
         ):
-            if key in self._data.keys():
-                baseband_data[key] = self._data[key]
+            if key in self.data.keys():
+                baseband_data[key] = self.data[key]
 
         return baseband_data
 
     @property
     def board_id(self) -> int:
-        board_id = self._data.get('ApBoardID')
+        board_id = self.data.get('ApBoardID')
         if board_id is None:
             raise KeyError('Board ID not found in build identity')
 
@@ -49,19 +55,15 @@ class BuildIdentity:
 
     @property
     def chip_id(self) -> int:
-        chip_id = self._data.get('ApChipID')
+        chip_id = self.data.get('ApChipID')
         if chip_id is None:
             raise KeyError('Chip ID not found in build identity')
 
         return int(chip_id, 16)
 
     @property
-    def pearlcertrootpub(self) -> Optional[bytes]:
-        return self._data.get('PearlCertificationRootPub')
-
-    @property
     def supports_cellular(self) -> bool:
-        manifest = self._data.get('Manifest')
+        manifest = self.data.get('Manifest')
         if manifest is None:
             raise KeyError('Manifest dict not found in build identity')
 
@@ -69,7 +71,7 @@ class BuildIdentity:
 
     @property
     def restore_type(self) -> RestoreType:
-        info = self._data.get('Info')
+        info = self.data.get('Info')
         if info is None:
             raise KeyError('Info dict not found in build identity')
 
@@ -88,22 +90,14 @@ class BuildIdentity:
 
     @property
     def security_domain(self) -> int:
-        security_domain = self._data.get('ApSecurityDomain')
+        security_domain = self.data.get('ApSecurityDomain')
         if security_domain is None:
             raise KeyError('Security domain not found in build identity')
 
         return int(security_domain, 16)
 
-    @property
-    def unique_buildid(self) -> bytes:
-        unique_buildid = self._data.get('UniqueBuildID')
-        if unique_buildid is None:
-            raise KeyError('Unique BuildID not found in build identity')
-
-        return unique_buildid
-
     def get_component(self, component: str) -> dict:
-        manifest = self._data.get('Manifest')
+        manifest = self.data.get('Manifest')
         if manifest is None:
             raise KeyError('Manifest dict not found in build identity')
 

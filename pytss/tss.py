@@ -5,12 +5,11 @@ from uuid import UUID
 
 from aiohttp import ClientSession
 
-from .baseband_data import get_baseband_data
 from .device import Device
 from .errors import APIError
 from .firmware import Firmware, FirmwareImage
 from .manifest import BuildIdentity, BuildManifest, RestoreType
-from .utils import _generate_bytes
+from .soc import BasebandSoC, _SoC
 
 TSS_API = 'http://gs.apple.com/TSS/controller'
 TSS_HEADERS = {
@@ -75,7 +74,10 @@ class TSS:
         request['ApECID'] = self.device.ecid
         request['ApSecurityDomain'] = self.identity.security_domain
 
-        request['UniqueBuildID'] = self.identity.unique_buildid
+        if 'UniqueBuildID' in self.identity.keys():
+            request['UniqueBuildID'] = self.identity['UniqueBuildID']
+        else:
+            raise KeyError('Unique Build ID not found in build identity')
 
         request['ApNonce'] = self.device.ap_nonce
         request['ApProductionMode'] = True
@@ -86,8 +88,10 @@ class TSS:
 
             request['SepNonce'] = self.device.sep_nonce
 
-            if self.identity.pearlcertrootpub is not None:
-                request['PearlCertificationRootPub'] = self.identity.pearlcertrootpub
+            if 'PearlCertificationRootPub' in self.identity.keys():
+                request['PearlCertificationRootPub'] = self.identity[
+                    'PearlCertificationRootPub'
+                ]
         else:
             request['@APTicket'] = True
 
@@ -95,26 +99,17 @@ class TSS:
 
         self._request = request
 
-    def _add_baseband_firmware(self) -> None:
-        request = {'@BBTicket': True, 'BbNonce': self.device.bb_nonce}
+    def _add_baseband_firmware(self, baseband: BasebandSoC) -> None:
+        request = {
+            '@BBTicket': True,
+            'BbGoldCertId': baseband.gc_id,
+            'BbNonce': baseband.nonce,
+            'BbSNUM': baseband.serial,
+        }
         request.update(self.identity.baseband_data)
 
-        baseband_data = get_baseband_data(self.device)
-        request['BbGoldCertId'] = baseband_data.bbgcid
-
-        if self.device.bb_serial is not None:
-            if len(self.device.bb_serial) != baseband_data.bbslen:
-                raise ValueError(
-                    f"Baseband serial length was expected to be: {baseband_data.bbslen}, was: {len(self.device.bb_serial)}"
-                )
-
-            request['BbSNUM'] = self.device.bb_serial
-        else:
-            request['BbSNUM'] = _generate_bytes(baseband_data.bbslen)
-
         baseband_firmware = self.identity.get_component('BasebandFirmware')
-        if 'Info' in baseband_firmware.keys():
-            del baseband_firmware['Info']
+        baseband_firmware.pop('Info', None)  # Remove 'Info' dict if found
 
         if request['BbChipID'] == 0x68:
             if request['BbGoldCertId'] in (0x26F3FACC, 0x5CF2EC4E, 0x8399785A):
@@ -131,7 +126,7 @@ class TSS:
         self._images.append(FirmwareImage.Baseband)
 
     @classmethod
-    async def create_request(
+    async def new(
         self, device: Device, firmware: Firmware, *, restore_type: RestoreType
     ) -> 'TSS':
         if device.ecid is None:
@@ -148,15 +143,21 @@ class TSS:
 
         return TSS(device, identity)
 
-    def add_image(self, image: FirmwareImage) -> None:
+    def add_image(self, image: FirmwareImage, soc: _SoC) -> None:
         if image in self._images:
             raise ValueError(f"Image already added to TSS request: '{image.name}'")
 
-        if image == FirmwareImage.Baseband:
-            if not self.identity.supports_cellular:
-                raise ValueError('Device does not have cellular support.')
+        if not isinstance(soc, _SoC):
+            raise TypeError(f"Invalid SoC provided: '{soc}'")
 
-            self._add_baseband_firmware()
+        if image == FirmwareImage.Baseband:
+            if not isinstance(soc, BasebandSoC):
+                raise TypeError('Non-Baseband SoC provided')
+
+            if not self.identity.supports_cellular:
+                raise ValueError('Device does not have cellular support')
+
+            self._add_baseband_firmware(soc)
 
         elif image == FirmwareImage.SecureElement:
             pass

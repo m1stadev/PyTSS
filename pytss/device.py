@@ -1,10 +1,9 @@
 from typing import Optional, Union
-
+from random import getrandbits
 import aiohttp
 
 from .errors import APIError
 from .firmware import Firmware
-from .utils import _generate_bytes
 
 RELEASE_API = 'https://api.ipsw.me/v4/device'
 BETA_API = 'https://api.m1sta.xyz/betas'
@@ -49,7 +48,7 @@ class Device:
             if len(ap_nonce) != ap_nonce_len:
                 raise ValueError('Invalid ap_nonce provided')
         else:
-            ap_nonce = _generate_bytes(ap_nonce_len)
+            ap_nonce = bytes(getrandbits(8) for _ in range(ap_nonce_len))
 
         self._ap_nonce = ap_nonce
 
@@ -69,7 +68,7 @@ class Device:
             if len(bb_nonce) != 20:
                 raise ValueError('Invalid Baseband Nonce provided')
         else:
-            bb_nonce = _generate_bytes(20)
+            bb_nonce = bytes(getrandbits(8) for _ in range(20))
 
         self._bb_nonce = bb_nonce
 
@@ -123,7 +122,7 @@ class Device:
             if len(sep_nonce) != 20:
                 raise ValueError('Invalid sep_nonce provided')
         else:
-            sep_nonce = _generate_bytes(20)
+            sep_nonce = bytes(getrandbits(8) for _ in range(20))
 
         self._sep_nonce = sep_nonce
 
