@@ -5,11 +5,12 @@ from uuid import UUID
 
 from aiohttp import ClientSession
 
+from ._utils import FrozenUserDict
 from .device import Device
 from .errors import APIError
 from .firmware import Firmware, FirmwareImage
 from .manifest import BuildIdentity, BuildManifest, RestoreType
-from .soc import BasebandSoC, _SoC
+from .soc import Baseband, _SoC
 
 TSS_API = 'http://gs.apple.com/TSS/controller'
 TSS_HEADERS = {
@@ -22,7 +23,7 @@ TSS_PARAMS = {'action': 2}
 TSS_CLIENT_VERSION = 'libauthinstall-850.0.2'
 
 
-class TSSResponse:
+class TSSResponse(FrozenUserDict):
     def __init__(self, response: str):
         self._response = response
 
@@ -37,12 +38,6 @@ class TSSResponse:
 
             elif r.split('=')[0] == 'REQUEST_STRING':
                 self.data = plistlib.loads(str.encode(r.split('=', 1)[1]))
-                if 'APTicket' in self.data.keys():
-                    self.apticket = self.data['APTicket']
-                elif 'ApImg4Ticket' in self.data.keys():
-                    self.apticket = self.data['ApImg4Ticket']
-                else:
-                    raise ValueError('ApTicket not found in TSS response')
 
             elif r.split('=')[0] == 'MESSAGE':  # Not handling response message for now
                 pass
@@ -82,7 +77,7 @@ class TSS:
         request['ApNonce'] = self.device.ap_nonce
         request['ApProductionMode'] = True
 
-        if self.device.supports_img4:
+        if self.device.is_64bit:
             request['@ApImg4Ticket'] = True
             request['ApSecurityMode'] = True
 
@@ -99,7 +94,7 @@ class TSS:
 
         self._request = request
 
-    def _add_baseband_firmware(self, baseband: BasebandSoC) -> None:
+    def _add_baseband_firmware(self, baseband: Baseband) -> None:
         request = {
             '@BBTicket': True,
             'BbGoldCertId': baseband.gc_id,
@@ -127,7 +122,12 @@ class TSS:
 
     @classmethod
     async def new(
-        self, device: Device, firmware: Firmware, *, restore_type: RestoreType
+        self,
+        device: Device,
+        *,
+        firmware: Firmware = None,
+        build_manifest: BuildManifest = None,
+        restore_type: RestoreType,
     ) -> 'TSS':
         if device.ecid is None:
             raise TypeError('No ECID is set')
@@ -135,11 +135,16 @@ class TSS:
         if device.ap_nonce is None:
             raise TypeError('No ApNonce is set')
 
-        if device.sep_nonce is None:
+        if device.sep_nonce is None and device.is_64bit:
             raise TypeError('No SepNonce is set')
 
-        manifest = BuildManifest(await firmware.read('BuildManifest.plist'))
-        identity = manifest.get_identity(device, restore_type)
+        if build_manifest is None:
+            if firmware is None:
+                raise TypeError('Neither a firmware nor a build manifest were provided')
+
+            build_manifest = BuildManifest(await firmware.read('BuildManifest.plist'))
+
+        identity = build_manifest.get_identity(device, restore_type)
 
         return TSS(device, identity)
 
@@ -151,7 +156,7 @@ class TSS:
             raise TypeError(f"Invalid SoC provided: '{soc}'")
 
         if image == FirmwareImage.Baseband:
-            if not isinstance(soc, BasebandSoC):
+            if not isinstance(soc, Baseband):
                 raise TypeError('Non-Baseband SoC provided')
 
             if not self.identity.supports_cellular:

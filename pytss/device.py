@@ -1,5 +1,6 @@
-from typing import Optional, Union
 from random import getrandbits
+from typing import Optional, Union
+
 import aiohttp
 
 from .errors import APIError
@@ -25,9 +26,6 @@ class Device:
         self.ecid = ecid
         self.ap_nonce = None
 
-        self.bb_serial = None
-        self.bb_nonce = None
-
         self.sep_nonce = None
 
     @property
@@ -43,54 +41,14 @@ class Device:
                 try:
                     ap_nonce = bytes.fromhex(ap_nonce)
                 except TypeError:
-                    raise ValueError('Invalid ap_nonce provided')
+                    raise ValueError('Invalid AP nonce provided')
 
             if len(ap_nonce) != ap_nonce_len:
-                raise ValueError('Invalid ap_nonce provided')
+                raise ValueError('Invalid AP nonce provided')
         else:
-            ap_nonce = bytes(getrandbits(8) for _ in range(ap_nonce_len))
+            ap_nonce = bytes()  # Set as empty bytes
 
         self._ap_nonce = ap_nonce
-
-    @property
-    def bb_nonce(self) -> bytes:
-        return self._bb_nonce
-
-    @bb_nonce.setter
-    def bb_nonce(self, bb_nonce: Optional[Union[bytes, str]]) -> None:
-        if bb_nonce is not None:
-            if isinstance(bb_nonce, str):
-                try:
-                    bb_nonce = bytes.fromhex(bb_nonce)
-                except TypeError:
-                    raise ValueError('Invalid Baseband Nonce provided')
-
-            if len(bb_nonce) != 20:
-                raise ValueError('Invalid Baseband Nonce provided')
-        else:
-            bb_nonce = bytes(getrandbits(8) for _ in range(20))
-
-        self._bb_nonce = bb_nonce
-
-    @property
-    def bb_serial(self) -> Optional[bytes]:
-        return self._bb_serial
-
-    @bb_serial.setter
-    def bb_serial(self, bb_serial: Optional[Union[bytes, str]]) -> None:
-        if bb_serial is not None:
-            if isinstance(bb_serial, str):
-                try:
-                    bb_serial = bytes.fromhex(bb_serial)
-                except TypeError:
-                    raise ValueError('Invalid Baseband serial number provided')
-
-            if len(bb_serial) != 4:
-                raise ValueError('Invalid Baseband serial number provided')
-
-            self._bb_serial = bb_serial
-        else:
-            self._bb_serial = None
 
     @property
     def ecid(self) -> int:
@@ -112,22 +70,25 @@ class Device:
 
     @sep_nonce.setter
     def sep_nonce(self, sep_nonce: Optional[Union[bytes, str]]) -> None:
+        if not self.is_64bit:
+            raise TypeError('32-bit devices do not have SEP')
+
         if sep_nonce is not None:
             if isinstance(sep_nonce, str):
                 try:
                     sep_nonce = bytes.fromhex(sep_nonce)
                 except TypeError:
-                    raise ValueError('Invalid sep_nonce provided')
+                    raise ValueError('Invalid SEP nonce provided')
 
             if len(sep_nonce) != 20:
-                raise ValueError('Invalid sep_nonce provided')
+                raise ValueError('Invalid SEP nonce provided')
         else:
             sep_nonce = bytes(getrandbits(8) for _ in range(20))
 
         self._sep_nonce = sep_nonce
 
     @property
-    def supports_img4(self) -> bool:
+    def is_64bit(self) -> bool:
         return not 0x8900 < self.chip_id < 0x8955
 
     async def fetch_firmware(
@@ -137,64 +98,28 @@ class Device:
             raise ValueError('Either a version or buildid must be provided')
 
         async with aiohttp.ClientSession() as session:
+            firmwares = list()
             async with session.get(f'{RELEASE_API}/{self.identifier}') as resp:
-                if resp.status != 200:
-                    raise APIError(
-                        f"Failed to request firmwares for device identfier: '{self.identifier}'",
-                        resp.status,
-                    )
+                if resp.status == 200:
+                    release_data = await resp.json()
+                    firmwares.extend(release_data['firmwares'])
 
-                data = await resp.json()
+            async with session.get(f'{BETA_API}/{self.identifier}') as resp:
+                if resp.status == 200:
+                    beta_data = await resp.json()
+                    firmwares.extend(beta_data)
 
-            if buildid:
-                firm = next(
-                    (
-                        f
-                        for f in data['firmwares']
-                        if f['buildid'].casefold() == buildid.casefold()
-                    ),
-                    None,
-                )
+        if buildid:
+            firm = next(
+                (f for f in firmwares if f['buildid'].casefold() == buildid.casefold()),
+                None,
+            )
 
-            elif version:
-                firm = next(
-                    (
-                        f
-                        for f in data['firmwares']
-                        if f['version'].casefold() == version.casefold()
-                    ),
-                    None,
-                )
-
-            if firm is None:
-                async with session.get(f'{BETA_API}/{self.identifier}') as resp:
-                    if resp.status != 200:
-                        raise APIError(
-                            f"Failed to request firmwares for device identfier: '{self.identifier}'",
-                            resp.status,
-                        )
-
-                    data = await resp.json()
-
-                if buildid:
-                    firm = next(
-                        (
-                            f
-                            for f in data
-                            if f['buildid'].casefold() == buildid.casefold()
-                        ),
-                        None,
-                    )
-
-                elif version:
-                    firm = next(
-                        (
-                            f
-                            for f in data
-                            if f['version'].casefold() == version.casefold()
-                        ),
-                        None,
-                    )
+        elif version:
+            firm = next(
+                (f for f in firmwares if f['version'].casefold() == version.casefold()),
+                None,
+            )
 
         if firm is None:
             raise ValueError('No firmware was found for the provided version/buildid')

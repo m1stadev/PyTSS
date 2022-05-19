@@ -1,8 +1,9 @@
 class _SoC:
-    pass
+    def _class_name(self) -> str:
+        return type(self).__name__
 
 
-class BasebandSoC(_SoC):
+class Baseband(_SoC):
     def __init__(self, *, gold_cert_id: int, nonce: bytes, serial: bytes):
         self.nonce = nonce
         self.gc_id = gold_cert_id
@@ -15,10 +16,7 @@ class BasebandSoC(_SoC):
     @nonce.setter
     def nonce(self, nonce: bytes):
         if not isinstance(nonce, bytes):
-            raise TypeError("Baseband nonce must be of type 'bytes'")
-
-        if len(nonce) != 20:
-            raise ValueError('Baseband nonce must be 20 bytes long')
+            raise TypeError(f"{self._class_name} nonce must be of type 'bytes'")
 
         self._nonce = nonce
 
@@ -29,7 +27,9 @@ class BasebandSoC(_SoC):
     @gc_id.setter
     def gc_id(self, gc_id: int):
         if not isinstance(gc_id, int):
-            raise TypeError("Baseband gold cert ID must be of type 'int'")
+            raise TypeError(
+                f"{self._class_name} gold certificate ID must be of type 'int'"
+            )
 
         self._gc_id = gc_id
 
@@ -40,6 +40,6 @@ class BasebandSoC(_SoC):
     @serial.setter
     def serial(self, serial: bytes):
         if not isinstance(serial, bytes):
-            raise TypeError("Baseband serial must be of type 'bytes'")
+            raise TypeError(f"{self._class_name} serial must be of type 'bytes'")
 
         self._serial = serial

@@ -1,8 +1,7 @@
 import plistlib
-from collections import UserDict
 from enum import Enum
-from typing import Any, NoReturn
 
+from ._utils import FrozenUserDict
 from .device import Device
 
 
@@ -11,14 +10,9 @@ class RestoreType(str, Enum):
     UPDATE = 'Update'
 
 
-class BuildIdentity(UserDict):
+class BuildIdentity(FrozenUserDict):
     def __init__(self, identity: dict) -> None:
         self.data = identity
-
-    def __setitem__(self, _: Any, __: Any) -> NoReturn:
-        raise TypeError('BuildIdentity is read-only')
-
-    __delitem__ = __setitem__
 
     @property
     def baseband_data(self) -> dict:
