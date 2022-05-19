@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "pytss"
 version = "0.1"
-description = "A Python library/CLI tool for interacting with Apple's Tatsu signing servers."
+description = "A Python library for interacting with Apple's Tatsu Signing Server (TSS)."
 authors = ["m1stadev <adamhamdi31@gmail.com>"]
 license = "MIT"
 readme = "README.md"
@@ -19,9 +19,6 @@ packages = [
     { include = "pytss" }
 ]
 
-[tool.poetry.scripts]
-pytss = "pytss.__main__:main"
-
 [tool.poetry.dependencies]
 python = "^3.7"
 aiohttp = "^3.8.1"
@@ -37,7 +34,6 @@ skip-string-normalization = true
 
 [tool.isort]
 profile = "black"
-src_paths = ["pytest"]
 
 [tool.poetry.urls]
 "Bug Tracker" = "https://github.com/m1stadev/PyTSS/issues"

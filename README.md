@@ -1,2 +1,2 @@
 # pytss
-A Python library/CLI tool for interacting with Apple's Tatsu signing servers.
+A Python library for interacting with Apple's Tatsu Signing Server (TSS).
