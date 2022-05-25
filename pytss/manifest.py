@@ -90,16 +90,6 @@ class BuildIdentity(FrozenUserDict):
 
         return int(security_domain, 16)
 
-    def get_component(self, component: str) -> dict:
-        manifest = self.data.get('Manifest')
-        if manifest is None:
-            raise KeyError('Manifest dict not found in build identity')
-
-        if component not in manifest.keys():
-            raise KeyError(f"Component not found: '{component}'")
-
-        return manifest.get(component)
-
 
 class BuildManifest:
     def __init__(self, manifest: bytes) -> None:
@@ -111,11 +101,11 @@ class BuildManifest:
     def get_identity(self, device: Device, restore_type: RestoreType) -> BuildIdentity:
         identity = next(
             (
-                identity
-                for identity in self.identities
-                if identity.board_id == device.board_id
-                and identity.chip_id == device.chip_id
-                and identity.restore_type == restore_type
+                id_
+                for id_ in self.identities
+                if id_.board_id == device.board_id
+                and id_.chip_id == device.chip_id
+                and id_.restore_type == restore_type
             ),
             None,
         )

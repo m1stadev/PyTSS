@@ -91,6 +91,10 @@ class Device:
     def is_64bit(self) -> bool:
         return not 0x8900 < self.chip_id < 0x8955
 
+    @property
+    def supports_img4(self) -> bool:
+        return self.chip_id == 0x7002 or self.is_64bit
+
     async def fetch_firmware(
         self, *, version: str = None, buildid: str = None
     ) -> Firmware:

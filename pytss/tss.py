@@ -52,6 +52,7 @@ class TSS:
         self.identity = build_identity
 
         self._create_base_request()
+        self._add_ap_firmware()
         self._images: list = []
 
     def _create_base_request(self) -> None:
@@ -94,6 +95,80 @@ class TSS:
 
         self._request = request
 
+    def _handle_restore_request_rules(self, image: dict) -> None:
+        for rule in image['Info']['RestoreRequestRules']:
+            break_ = False
+
+            conditions = rule['Conditions']
+            for key, val in conditions.items():
+                conditions_mapping = {
+                    'ApRawProductionMode': 'ApProductionMode',
+                    'ApCurrentProductionMode': 'ApProductionMode',
+                    'ApRawSecurityMode': 'ApSecurityMode',
+                    'ApRequiresImage4': 'ApSupportsImg4',
+                    'ApDemotionPolicyOverride': 'DemotionPolicy',
+                    'ApInRomDFU': 'ApInRomDFU',
+                }
+                if key in conditions_mapping.keys():
+                    break_ = not self._request.get(conditions_mapping[key]) == val
+                else:
+                    break_ = True
+
+                if break_ == True:
+                    break
+
+            if break_ == True:
+                continue
+
+            actions = rule['Actions']
+            for key, val in actions.items():
+                if val != 255:
+                    self._request.pop(key, None)
+                    image[key] = val
+
+    def _add_ap_firmware(self) -> None:
+        request = {}
+
+        for name, img in self.identity['Manifest'].items():
+            # These are only included in their respective SoC's requests
+            if any(
+                name.startswith(i)
+                for i in (
+                    'BasebandFirmware',
+                    'Baobab,',
+                    'BMU,',
+                    'eUICC,',
+                    'Rap,',
+                    'Savage,',
+                    'SE,',
+                    'Timer,',
+                    'Yonkers,',
+                )
+            ):
+                continue
+
+            # Skip these
+            if any(i in name for i in ('BaseSystem', 'Diags')):
+                continue
+
+            # RestoreRequestRules are required for devices that use IMG4
+            if self.device.supports_img4 == True:
+                if 'RestoreRequestRules' not in img['Info'].keys():
+                    continue
+                else:
+                    self._handle_restore_request_rules(img)
+
+            if 'Trusted' in img.keys():
+                if 'Digest' not in img.keys():
+                    img['Digest'] = bytes()
+
+            if 'Info' in img.keys():
+                img.pop('Info', None)
+
+            request[name] = img
+
+            self._request.update(request)
+
     def _add_baseband_firmware(self, baseband: Baseband) -> None:
         request = {
             '@BBTicket': True,
@@ -103,7 +178,7 @@ class TSS:
         }
         request.update(self.identity.baseband_data)
 
-        baseband_firmware = self.identity.get_component('BasebandFirmware')
+        baseband_firmware = self.identity['Manifest']['BasebandFirmware']
         baseband_firmware.pop('Info', None)  # Remove 'Info' dict if found
 
         if request['BbChipID'] == 0x68:
