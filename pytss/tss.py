@@ -98,9 +98,10 @@ class TSS:
     def _handle_restore_request_rules(self, image: dict) -> None:
         for rule in image['Info']['RestoreRequestRules']:
             break_ = False
+            for key, val in rule['Conditions'].items():
+                if break_ == True:
+                    break
 
-            conditions = rule['Conditions']
-            for key, val in conditions.items():
                 conditions_mapping = {
                     'ApRawProductionMode': 'ApProductionMode',
                     'ApCurrentProductionMode': 'ApProductionMode',
@@ -110,12 +111,17 @@ class TSS:
                     'ApInRomDFU': 'ApInRomDFU',
                 }
                 if key in conditions_mapping.keys():
-                    break_ = not self._request.get(conditions_mapping[key]) == val
+                    if val == '':
+                        val = None
+
+                    if key == 'ApRequiresImage4':
+                        val2 = self.device.supports_img4
+                    else:
+                        val2 = self._request.get(conditions_mapping[key])
+                    if val != val2:
+                        break_ = True
                 else:
                     break_ = True
-
-                if break_ == True:
-                    break
 
             if break_ == True:
                 continue
